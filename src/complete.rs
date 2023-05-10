@@ -1,6 +1,9 @@
 use std::ops::{RangeFrom, RangeTo};
 
-use nom::{InputIter, Slice, IResult, error::ParseError, AsChar, character::complete::satisfy, InputLength, Offset, combinator::recognize, multi::many1_count};
+use nom::{
+    character::complete::satisfy, combinator::recognize, error::ParseError, multi::many1_count,
+    AsChar, IResult, InputIter, InputLength, Offset, Slice,
+};
 
 use crate::is_tchar;
 
@@ -28,10 +31,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use nom::{error::VerboseError, Needed, Err as OutCome};
+    use nom::{error::VerboseError, Err as OutCome, Needed};
 
     use crate::complete::{tchar, token};
-
 
     #[test]
     fn test_tchar() {

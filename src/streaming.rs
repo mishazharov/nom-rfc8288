@@ -31,7 +31,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use nom::{error::VerboseError, Needed, Err as OutCome};
+    use nom::{error::VerboseError, Err as OutCome, Needed};
 
     use crate::streaming::{tchar, token};
 
