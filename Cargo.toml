@@ -1,7 +1,13 @@
 [package]
-name = "name"
+name = "nom-rfc8288"
 version = "0.1.0"
 edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "A nom based parser for RFC 8288"
+homepage = "https://github.com/mishazharov/nom-rfc8288"
+documentation = "https://docs.rs/nom-rfc8288"
+repository = "https://github.com/mishazharov/nom-rfc8288"
+readme = "README.md"
 
 [[bin]]
 path = "src/main.rs"
