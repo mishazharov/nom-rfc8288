@@ -19,3 +19,13 @@ pub fn is_tchar(c: impl AsChar) -> bool {
              '\x30'..='\x39' // Digits
     )
 }
+
+/// QDTEXT = HTAB / SP / %x21 / %x23-5B / %x5D-7E / obs-text
+pub fn is_qdtext(c: impl AsChar) -> bool {
+    matches!(c.as_char(), '\t' | ' ' | '\x21' | '\x23' ..= '\x5B' | '\x5D' ..= '\x7E' | '\u{80}' ..= '\u{FF}')
+}
+
+/// Only implements the ( HTAB / SP / VCHAR / obs-text ) component of QUOTED-PAIR
+fn is_quoted_pair(c: impl AsChar) -> bool {
+    matches!(c.as_char(), '\t' | ' ' | '\x21' ..= '\x7E' | '\u{80}' ..= '\u{FF}')
+}

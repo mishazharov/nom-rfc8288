@@ -1,11 +1,16 @@
 use std::ops::{RangeFrom, RangeTo};
 
 use nom::{
-    character::complete::satisfy, combinator::recognize, error::ParseError, multi::many1_count,
+    branch::alt,
+    character::complete::{char, satisfy},
+    combinator::recognize,
+    error::ParseError,
+    multi::{fold_many0, many1_count},
+    sequence::{delimited, preceded},
     AsChar, IResult, InputIter, InputLength, Offset, Slice,
 };
 
-use crate::is_tchar;
+use crate::{is_qdtext, is_quoted_pair, is_tchar};
 
 /// TCHAR = "!" / "#" / "$" / "%" / "&" / "'" / "*"
 ///       / "+" / "-" / "." / "^" / "_" / "`" / "|" / "~"
@@ -29,11 +34,52 @@ where
     recognize(many1_count(tchar))(input)
 }
 
+/// QDTEXT = HTAB / SP / %x21 / %x23-5B / %x5D-7E / obs-text
+pub fn qdtext<I, E>(input: I) -> IResult<I, char, E>
+where
+    I: InputIter + Slice<RangeFrom<usize>> + Copy,
+    <I as InputIter>::Item: AsChar,
+    E: ParseError<I>,
+{
+    satisfy(is_qdtext)(input)
+}
+
+/// QUOTED-PAIR = "\" ( HTAB / SP / VCHAR / obs-text )
+fn quoted_pair<I, E>(input: I) -> IResult<I, char, E>
+where
+    I: InputIter + Slice<RangeFrom<usize>> + Copy,
+    <I as InputIter>::Item: AsChar,
+    E: ParseError<I>,
+{
+    preceded(char('\\'), satisfy(is_quoted_pair))(input)
+}
+
+/// QUOTED-STRING = DQUOTE *( qdtext / quoted-pair ) DQUOTE
+pub fn quoted_string<I, E>(input: I) -> IResult<I, String, E>
+where
+    I: InputIter + Slice<RangeFrom<usize>> + Slice<RangeTo<usize>> + Copy + InputLength + Offset,
+    <I as InputIter>::Item: AsChar,
+    E: ParseError<I>,
+{
+    delimited(
+        char('"'),
+        fold_many0(
+            alt((qdtext, quoted_pair)),
+            String::default,
+            |mut collection, input| {
+                collection.push(input);
+                collection
+            },
+        ),
+        char('"'),
+    )(input)
+}
+
 #[cfg(test)]
 mod tests {
-    use nom::{error::VerboseError, Err as OutCome, Needed};
+    use nom::{error::VerboseError, Err as OutCome};
 
-    use crate::complete::{tchar, token};
+    use crate::complete::{quoted_string, tchar, token};
 
     #[test]
     fn test_tchar() {
@@ -54,5 +100,13 @@ mod tests {
             token::<_, VerboseError<&str>>(","),
             Err(OutCome::Error(_))
         ));
+    }
+
+    #[test]
+    fn test_quoted_string() {
+        assert_eq!(
+            quoted_string::<_, VerboseError<&str>>(r#""""#),
+            Ok(("", String::from(r#""#)))
+        );
     }
 }
