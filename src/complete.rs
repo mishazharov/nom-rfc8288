@@ -108,5 +108,30 @@ mod tests {
             quoted_string::<_, VerboseError<&str>>(r#""""#),
             Ok(("", String::from(r#""#)))
         );
+
+        assert_eq!(
+            quoted_string::<_, VerboseError<&str>>(r#""hello""#),
+            Ok(("", String::from(r#"hello"#)))
+        );
+
+        assert_eq!(
+            quoted_string::<_, VerboseError<&str>>(r#""\"hello""#),
+            Ok(("", String::from(r#""hello"#)))
+        );
+
+        assert!(matches!(
+            quoted_string::<_, VerboseError<&str>>(r#""awd"#),
+            Err(OutCome::Error(_))
+        ));
+
+        assert!(matches!(
+            quoted_string::<_, VerboseError<&str>>(r#" "text""#),
+            Err(OutCome::Error(_))
+        ));
+
+        assert_eq!(
+            quoted_string::<_, VerboseError<&str>>(r#""awd"trailing"#),
+            Ok(("trailing", String::from("awd")))
+        );
     }
 }
