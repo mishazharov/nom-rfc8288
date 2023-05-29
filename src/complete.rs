@@ -2,15 +2,15 @@ use std::ops::{RangeFrom, RangeTo};
 
 use nom::{
     branch::alt,
-    character::complete::{char, satisfy},
+    character::complete::{char, satisfy, space0},
     combinator::recognize,
     error::ParseError,
-    multi::{fold_many0, many1_count},
-    sequence::{delimited, preceded},
-    AsChar, IResult, InputIter, InputLength, Offset, Slice,
+    multi::{fold_many0, many1_count, many_m_n, separated_list1},
+    sequence::{delimited, preceded, tuple},
+    AsChar, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition, Offset, Parser, Slice,
 };
 
-use crate::{is_qdtext, is_quoted_pair, is_tchar};
+use crate::{is_qdtext, is_quoted_pair, is_tchar, optional_parser};
 
 /// TCHAR = "!" / "#" / "$" / "%" / "&" / "'" / "*"
 ///       / "+" / "-" / "." / "^" / "_" / "`" / "|" / "~"
@@ -75,11 +75,54 @@ where
     )(input)
 }
 
+/// #rule
+/// #element => [ element ] *( OWS "," OWS [ element ] )
+///
+/// RFC 9110 specifies that:
+///
+/// > A recipient MUST parse and ignore a reasonable number of empty list
+/// > elements: enough to handle common mistakes by senders that merge
+/// > values, but not so much that they could be used as a denial-of-
+/// > service mechanism.
+///
+/// However, the RFC does not specify what a "reasonable" value for this is,
+/// so we allow the user to configure such a limit.
+///
+/// In this implementation, empty list elements are represented as `None`
+/// in the returned `Vec`, and non-empty list elements are represented as
+/// `Some<E>`
+pub fn list<I, O, E, L>(
+    reasonable_count: usize,
+    element: L,
+    input: I,
+) -> IResult<I, Vec<Option<O>>, E>
+where
+    L: Parser<I, O, E>,
+    E: ParseError<I>,
+    I: InputLength
+        + Clone
+        + Copy
+        + InputTakeAtPosition
+        + InputIter
+        + InputTake
+        + Slice<RangeFrom<usize>>,
+    <I as InputIter>::Item: Clone + AsChar,
+    <I as InputTakeAtPosition>::Item: AsChar + Clone,
+{
+    let allow_empty_elements = reasonable_count != 0;
+    separated_list1(
+        many_m_n(1, reasonable_count + 1, tuple((space0, char(','), space0))),
+        optional_parser(allow_empty_elements, element),
+    )(input)
+}
+
 #[cfg(test)]
 mod tests {
     use nom::{error::VerboseError, Err as OutCome};
 
     use crate::complete::{quoted_string, tchar, token};
+
+    use super::list;
 
     #[test]
     fn test_tchar() {
@@ -132,6 +175,29 @@ mod tests {
         assert_eq!(
             quoted_string::<_, VerboseError<&str>>(r#""awd"trailing"#),
             Ok(("trailing", String::from("awd")))
+        );
+    }
+
+    #[test]
+    fn test_list_rule() {
+        assert_eq!(
+            list::<_, _, VerboseError<&str>, _>(0, token, "a,b,c"),
+            Ok(("", vec![Some("a"), Some("b"), Some("c")]))
+        );
+
+        assert_eq!(
+            list::<_, _, VerboseError<&str>, _>(0, token, "a , b , c"),
+            Ok(("", vec![Some("a"), Some("b"), Some("c")]))
+        );
+
+        assert_eq!(
+            list::<_, _, VerboseError<&str>, _>(0, token, "a , b , "),
+            Ok((" , ", vec![Some("a"), Some("b")]))
+        );
+
+        assert_eq!(
+            list::<_, _, VerboseError<&str>, _>(0, token, "a , b , ,"),
+            Ok((" , ,", vec![Some("a"), Some("b")]))
         );
     }
 }
