@@ -9,8 +9,9 @@ documentation = "https://docs.rs/nom-rfc8288"
 repository = "https://github.com/mishazharov/nom-rfc8288"
 readme = "README.md"
 
-[[bin]]
-path = "src/main.rs"
-name = "main"
+[lib]
+name = "nom_rfc8288"
+path = "src/lib.rs"
 
 [dependencies]
+nom = "7.1.3"
