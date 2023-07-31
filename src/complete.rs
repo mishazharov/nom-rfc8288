@@ -1,12 +1,15 @@
-use std::ops::{RangeFrom, RangeTo};
+use std::{
+    collections::HashMap,
+    ops::{RangeFrom, RangeTo},
+};
 
 use nom::{
     branch::alt,
-    character::complete::{char, satisfy, space0},
-    combinator::recognize,
-    error::ParseError,
-    multi::{fold_many0, many1_count, many_m_n, separated_list1},
-    sequence::{delimited, preceded, tuple},
+    character::complete::{char, none_of, satisfy, space0},
+    combinator::{opt, recognize},
+    error::{ParseError, VerboseError},
+    multi::{many0, many0_count, many1_count, many_m_n, separated_list1},
+    sequence::{delimited, pair, preceded, tuple},
     AsChar, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition, Offset, Parser, Slice,
 };
 
@@ -55,7 +58,11 @@ where
 }
 
 /// QUOTED-STRING = DQUOTE *( qdtext / quoted-pair ) DQUOTE
-pub fn quoted_string<I, E>(input: I) -> IResult<I, String, E>
+///
+/// If the parser succeeds, we return the unmodified string (with backslashes included)
+/// to prevent allocation and to make sure that all of the return types are consistent
+/// when using nom combinators
+fn quoted_string<I, E>(input: I) -> IResult<I, I, E>
 where
     I: InputIter + Slice<RangeFrom<usize>> + Slice<RangeTo<usize>> + Copy + InputLength + Offset,
     <I as InputIter>::Item: AsChar,
@@ -63,14 +70,7 @@ where
 {
     delimited(
         char('"'),
-        fold_many0(
-            alt((qdtext, quoted_pair)),
-            String::default,
-            |mut collection, input| {
-                collection.push(input);
-                collection
-            },
-        ),
+        recognize(many0_count(alt((qdtext, quoted_pair)))),
         char('"'),
     )(input)
 }
@@ -116,6 +116,43 @@ where
     )(input)
 }
 
+pub struct LinkData<'a> {
+    url: &'a str,
+    params: HashMap<&'a str, &'a str>,
+}
+
+pub fn link<'a, E>(input: &str) -> Result<Vec<LinkData<'a>>, nom::Err<VerboseError<&str>>>
+where
+{
+    let (remainder, output): (_, Vec<Option<(&str, Vec<(&str, Option<&str>)>)>>) =
+        list::<_, _, VerboseError<&str>, _>(
+            0,
+            tuple((
+                delimited(char('<'), recognize(many0_count(none_of(">"))), char('>')),
+                many0(preceded(
+                    tuple((space0, char(';'), space0)),
+                    pair(
+                        token::<&str, VerboseError<&str>>,
+                        opt(preceded(
+                            pair(char('='), space0),
+                            alt((token, quoted_string)),
+                        )),
+                    ),
+                )),
+            )),
+            input,
+        )?;
+
+    if !remainder.is_empty() {
+        return Err(nom::Err::Error(VerboseError::from_char(
+            remainder,
+            remainder.chars().next().unwrap(),
+        )));
+    }
+
+    todo!();
+}
+
 #[cfg(test)]
 mod tests {
     use nom::{error::VerboseError, Err as OutCome};
@@ -149,17 +186,17 @@ mod tests {
     fn test_quoted_string() {
         assert_eq!(
             quoted_string::<_, VerboseError<&str>>(r#""""#),
-            Ok(("", String::from(r#""#)))
+            Ok(("", r#""#))
         );
 
         assert_eq!(
             quoted_string::<_, VerboseError<&str>>(r#""hello""#),
-            Ok(("", String::from(r#"hello"#)))
+            Ok(("", r#"hello"#))
         );
 
         assert_eq!(
             quoted_string::<_, VerboseError<&str>>(r#""\"hello""#),
-            Ok(("", String::from(r#""hello"#)))
+            Ok(("", r#"\"hello"#))
         );
 
         assert!(matches!(
@@ -174,7 +211,7 @@ mod tests {
 
         assert_eq!(
             quoted_string::<_, VerboseError<&str>>(r#""awd"trailing"#),
-            Ok(("trailing", String::from("awd")))
+            Ok(("trailing", "awd"))
         );
     }
 
