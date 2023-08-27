@@ -1,14 +1,12 @@
-use std::{
-    collections::HashMap,
-    ops::{RangeFrom, RangeTo},
-};
+use std::ops::{RangeFrom, RangeTo};
 
+use itertools::Itertools;
 use nom::{
     branch::alt,
     character::complete::{char, none_of, satisfy, space0},
-    combinator::{opt, recognize},
+    combinator::{all_consuming, opt, recognize},
     error::{ParseError, VerboseError},
-    multi::{many0, many0_count, many1_count, many_m_n, separated_list1},
+    multi::{fold_many0, many0, many0_count, many1_count, many_m_n, separated_list1},
     sequence::{delimited, pair, preceded, tuple},
     AsChar, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition, Offset, Parser, Slice,
 };
@@ -75,6 +73,22 @@ where
     )(input)
 }
 
+fn quoted_string_alloca<I, E>(input: I) -> IResult<I, String, E>
+where
+    I: InputIter + Slice<RangeFrom<usize>> + Copy + InputLength,
+    <I as InputIter>::Item: AsChar,
+    E: ParseError<I>,
+{
+    all_consuming(delimited(
+        char('"'),
+        fold_many0(alt((qdtext, quoted_pair)), String::new, |mut acc, item| {
+            acc.push(item);
+            acc
+        }),
+        char('"'),
+    ))(input)
+}
+
 /// #rule
 /// #element => [ element ] *( OWS "," OWS [ element ] )
 ///
@@ -116,15 +130,28 @@ where
     )(input)
 }
 
-pub struct LinkData<'a> {
-    url: &'a str,
-    params: HashMap<&'a str, &'a str>,
+pub struct LinkParam<'a> {
+    key: &'a str,
+    // This has to be a String because we need to strip out quotes and slashes
+    // necessitating an allocation. We could probably use an Enum, and return
+    // an &str when allocation isn't needed, but at this point the ease of use
+    // is probably more important
+    val: Option<String>,
 }
 
-pub fn link<'a, E>(input: &str) -> Result<Vec<LinkData<'a>>, nom::Err<VerboseError<&str>>>
+pub struct LinkData<'a> {
+    url: &'a str,
+    params: Vec<LinkParam<'a>>,
+}
+
+pub fn link<'a, E>(
+    input: &'a str,
+) -> Result<Vec<Option<LinkData<'a>>>, nom::Err<VerboseError<&str>>>
 where
+    E: ParseError<&'a str>,
+    nom::Err<VerboseError<&'a str>>: From<nom::Err<E>>,
 {
-    let (remainder, output): (_, Vec<Option<(&str, Vec<(&str, Option<&str>)>)>>) =
+    let (remainder, mut output): (_, Vec<Option<(&str, Vec<(&str, Option<&str>)>)>>) =
         list::<_, _, VerboseError<&str>, _>(
             0,
             tuple((
@@ -150,7 +177,52 @@ where
         )));
     }
 
-    todo!();
+    println!("{:?}", output);
+
+    let res = output
+        .drain(..)
+        .map(|parsed_link| {
+            let mut parsed_link = match parsed_link {
+                Some(l) => l,
+                None => return Ok(None),
+            };
+
+            let link_params = parsed_link
+                .1
+                .drain(..)
+                .map(|link_param| {
+                    let parsed_link_param_val = match link_param.1 {
+                        None => None,
+                        Some(link_param_val) if link_param_val.starts_with('"') => {
+                            match quoted_string_alloca::<&str, E>(link_param_val) {
+                                Ok(s) => Some(s.1),
+                                Err(e) => return Err(e),
+                            }
+                        }
+                        Some(link_param_val) => Some(link_param_val.to_owned()),
+                    };
+
+                    Ok(LinkParam {
+                        key: link_param.0,
+                        val: parsed_link_param_val,
+                    })
+                })
+                .fold_ok(Vec::new(), |mut acc, item| {
+                    acc.push(item);
+                    acc
+                })?;
+
+            Ok(Some(LinkData {
+                url: parsed_link.0,
+                params: link_params,
+            }))
+        })
+        .fold_ok(Vec::new(), |mut acc, item| {
+            acc.push(item);
+            acc
+        });
+
+    res
 }
 
 #[cfg(test)]
@@ -159,7 +231,7 @@ mod tests {
 
     use crate::complete::{quoted_string, tchar, token};
 
-    use super::list;
+    use super::{link, list};
 
     #[test]
     fn test_tchar() {
@@ -236,5 +308,13 @@ mod tests {
             list::<_, _, VerboseError<&str>, _>(0, token, "a , b , ,"),
             Ok((" , ,", vec![Some("a"), Some("b")]))
         );
+    }
+
+    #[test]
+    fn test_link() {
+        let input = r##"</terms>; rel="copyright"; anchor="#foo""##;
+
+        link::<VerboseError<&str>>(input).unwrap();
+        assert!(false);
     }
 }
