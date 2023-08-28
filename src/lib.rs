@@ -27,6 +27,7 @@ pub fn is_qdtext(c: impl AsChar) -> bool {
 
 /// Only implements the ( HTAB / SP / VCHAR / obs-text ) component of QUOTED-PAIR
 fn is_quoted_pair(c: impl AsChar) -> bool {
+    // https://datatracker.ietf.org/doc/html/rfc7230#section-3.2.6
     matches!(c.as_char(), '\t' | ' ' | '\x21' ..= '\x7E' | '\u{80}' ..= '\u{FF}')
 }
 

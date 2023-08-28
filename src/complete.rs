@@ -66,11 +66,11 @@ where
     <I as InputIter>::Item: AsChar,
     E: ParseError<I>,
 {
-    delimited(
+    recognize(delimited(
         char('"'),
-        recognize(many0_count(alt((qdtext, quoted_pair)))),
+        recognize(many0_count(alt((quoted_pair, qdtext)))),
         char('"'),
-    )(input)
+    ))(input)
 }
 
 fn quoted_string_alloca<I, E>(input: I) -> IResult<I, String, E>
@@ -81,7 +81,7 @@ where
 {
     all_consuming(delimited(
         char('"'),
-        fold_many0(alt((qdtext, quoted_pair)), String::new, |mut acc, item| {
+        fold_many0(alt((quoted_pair, qdtext)), String::new, |mut acc, item| {
             acc.push(item);
             acc
         }),
@@ -130,18 +130,20 @@ where
     )(input)
 }
 
+#[derive(PartialEq, Debug)]
 pub struct LinkParam<'a> {
-    key: &'a str,
+    pub key: &'a str,
     // This has to be a String because we need to strip out quotes and slashes
     // necessitating an allocation. We could probably use an Enum, and return
     // an &str when allocation isn't needed, but at this point the ease of use
     // is probably more important
-    val: Option<String>,
+    pub val: Option<String>,
 }
 
+#[derive(PartialEq, Debug)]
 pub struct LinkData<'a> {
-    url: &'a str,
-    params: Vec<LinkParam<'a>>,
+    pub url: &'a str,
+    pub params: Vec<LinkParam<'a>>,
 }
 
 pub fn link<'a, E>(
@@ -151,24 +153,27 @@ where
     E: ParseError<&'a str>,
     nom::Err<VerboseError<&'a str>>: From<nom::Err<E>>,
 {
-    let (remainder, mut output): (_, Vec<Option<(&str, Vec<(&str, Option<&str>)>)>>) =
-        list::<_, _, VerboseError<&str>, _>(
-            0,
-            tuple((
-                delimited(char('<'), recognize(many0_count(none_of(">"))), char('>')),
-                many0(preceded(
-                    tuple((space0, char(';'), space0)),
-                    pair(
-                        token::<&str, VerboseError<&str>>,
-                        opt(preceded(
-                            pair(char('='), space0),
-                            alt((token, quoted_string)),
-                        )),
-                    ),
-                )),
+    type ParserOutput<'s> = (
+        &'s str,
+        Vec<Option<(&'s str, Vec<(&'s str, Option<&'s str>)>)>>,
+    );
+    let (remainder, mut output): ParserOutput<'a> = list::<_, _, VerboseError<&str>, _>(
+        0,
+        tuple((
+            delimited(char('<'), recognize(many0_count(none_of(">"))), char('>')),
+            many0(preceded(
+                tuple((space0, char(';'), space0)),
+                pair(
+                    token::<&str, VerboseError<&str>>,
+                    opt(preceded(
+                        pair(char('='), space0),
+                        alt((quoted_string, token)),
+                    )),
+                ),
             )),
-            input,
-        )?;
+        )),
+        input,
+    )?;
 
     if !remainder.is_empty() {
         return Err(nom::Err::Error(VerboseError::from_char(
@@ -176,8 +181,6 @@ where
             remainder.chars().next().unwrap(),
         )));
     }
-
-    println!("{:?}", output);
 
     let res = output
         .drain(..)
@@ -229,9 +232,9 @@ where
 mod tests {
     use nom::{error::VerboseError, Err as OutCome};
 
-    use crate::complete::{quoted_string, tchar, token};
+    use crate::complete::{quoted_string, quoted_string_alloca, tchar, token, LinkData, LinkParam};
 
-    use super::{link, list};
+    use super::{link, list, quoted_pair};
 
     #[test]
     fn test_tchar() {
@@ -258,17 +261,17 @@ mod tests {
     fn test_quoted_string() {
         assert_eq!(
             quoted_string::<_, VerboseError<&str>>(r#""""#),
-            Ok(("", r#""#))
+            Ok(("", r#""""#))
         );
 
         assert_eq!(
             quoted_string::<_, VerboseError<&str>>(r#""hello""#),
-            Ok(("", r#"hello"#))
+            Ok(("", r#""hello""#))
         );
 
         assert_eq!(
             quoted_string::<_, VerboseError<&str>>(r#""\"hello""#),
-            Ok(("", r#"\"hello"#))
+            Ok(("", r#""\"hello""#))
         );
 
         assert!(matches!(
@@ -283,7 +286,7 @@ mod tests {
 
         assert_eq!(
             quoted_string::<_, VerboseError<&str>>(r#""awd"trailing"#),
-            Ok(("trailing", "awd"))
+            Ok(("trailing", r#""awd""#))
         );
     }
 
@@ -314,7 +317,71 @@ mod tests {
     fn test_link() {
         let input = r##"</terms>; rel="copyright"; anchor="#foo""##;
 
-        link::<VerboseError<&str>>(input).unwrap();
-        assert!(false);
+        let res = link::<VerboseError<&str>>(input).unwrap();
+
+        assert_eq!(
+            res,
+            vec![Some(LinkData {
+                url: "/terms",
+                params: vec![
+                    LinkParam {
+                        key: "rel",
+                        val: Some("copyright".into())
+                    },
+                    LinkParam {
+                        key: "anchor",
+                        val: Some("#foo".into())
+                    }
+                ]
+            })]
+        );
+    }
+
+    #[test]
+    fn test_quoted_pair() {
+        let input = r#"\a"#;
+
+        let res = quoted_pair::<_, VerboseError<&str>>(input).unwrap();
+        assert_eq!(res.1, 'a');
+    }
+
+    #[test]
+    fn test_quoted_string_alloca() {
+        let input = r#""aaaa""#;
+
+        let res = quoted_string_alloca::<_, VerboseError<&str>>(input).unwrap();
+        assert_eq!(res.1, "aaaa".to_owned());
+    }
+
+    #[test]
+    fn test_quoted_string_alloca_quotes() {
+        let input = r#""aa\"aa""#;
+
+        let res = quoted_string_alloca::<_, VerboseError<&str>>(input).unwrap();
+        assert_eq!(res.1, "aa\"aa".to_owned());
+    }
+
+    #[test]
+    fn test_link_quoted_link_param() {
+        let input = r##"</terms>; rel="copy\"right"; anchor=#foo"##;
+
+        let res = link::<VerboseError<&str>>(input).unwrap();
+
+        assert_eq!(
+            res,
+            vec![Some(LinkData {
+                url: "/terms",
+                params: vec![
+                    LinkParam {
+                        key: "rel",
+                        val: Some("copy\"right".into())
+                    },
+                    LinkParam {
+                        key: "anchor",
+                        val: Some("#foo".into())
+                    }
+                ]
+            })]
+        );
     }
 }
