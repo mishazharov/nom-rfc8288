@@ -1,6 +1,6 @@
 # [RFC 8288][rfc8288] parser
 
-[RFC 8288][rfc8228] specifies the convention for parsing the [Link][link-header] header.
+[RFC 8288][rfc8288] specifies the convention for parsing the [Link][link-header] header.
 
 ## Usage
 
