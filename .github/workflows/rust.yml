@@ -20,3 +20,9 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - run: cargo clippy -- -D warnings
+
+  cargo-doc:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v3
+      - run: cargo doc

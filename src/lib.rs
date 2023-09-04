@@ -1,6 +1,8 @@
 //! This crate provides utilities for parsing `Link` headers. See the [complete::link] method
 //! for more info
 
+#![deny(rustdoc::broken_intra_doc_links)]
+
 use nom::{error::ParseError, AsChar, IResult, Parser};
 
 pub mod complete;

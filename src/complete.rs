@@ -130,7 +130,7 @@ where
     )(input)
 }
 
-/// [LinkParam] is used represent the parsed data. It stores key value pairs from
+/// [`LinkParam`] is used represent the parsed data. It stores key value pairs from
 /// the Link header
 #[derive(PartialEq, Debug)]
 pub struct LinkParam<'a> {
@@ -142,7 +142,7 @@ pub struct LinkParam<'a> {
     pub val: Option<String>,
 }
 
-/// The [LinkData] struct is used to store the URL provided in the Link header,
+/// The [`LinkData`] struct is used to store the URL provided in the Link header,
 /// as well as optional parameters.
 #[derive(PartialEq, Debug)]
 pub struct LinkData<'a> {
@@ -154,10 +154,10 @@ pub struct LinkData<'a> {
 // and in fact the parser failed on the very first case I tried it on because of a trailing comma
 const NUM_EMPTY_ELEMENTS: usize = 2;
 
-/// This method will parse a [&str] and return an array of [Option]s if it can
-/// successfully parse the [&str] as a [Link](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Link) header.
-/// The reason we return [Option]s is because if the Link header has empty elements, we want to show that information
-/// to the user by returning [None]s.
+/// This method will parse a [`&str`] and return an array of [`Option`]s if it can
+/// successfully parse the [`&str`] as a [Link](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Link) header.
+/// The reason we return [`Option`]s is because if the Link header has empty elements, we want to show that information
+/// to the user by returning [`None`]s.
 /// ```rust
 /// use nom_rfc8288::complete::{link, LinkData, LinkParam};
 ///
