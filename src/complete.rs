@@ -146,9 +146,13 @@ pub struct LinkData<'a> {
     pub params: Vec<LinkParam<'a>>,
 }
 
+// https://datatracker.ietf.org/doc/html/rfc9110#name-recipient-requirements states that we should deal with at least some null elements
+// and in fact the parser failed on the very first case I tried it on because of a trailing comma
+const NUM_EMPTY_ELEMENTS: usize = 2;
+
 pub fn link<'a, E>(
     input: &'a str,
-) -> Result<Vec<Option<LinkData<'a>>>, nom::Err<VerboseError<&str>>>
+) -> Result<Vec<Option<LinkData<'a>>>, nom::Err<VerboseError<&'a str>>>
 where
     E: ParseError<&'a str>,
     nom::Err<VerboseError<&'a str>>: From<nom::Err<E>>,
@@ -158,7 +162,7 @@ where
         Vec<Option<(&'s str, Vec<(&'s str, Option<&'s str>)>)>>,
     );
     let (remainder, mut output): ParserOutput<'a> = list::<_, _, VerboseError<&str>, _>(
-        0,
+        NUM_EMPTY_ELEMENTS,
         tuple((
             delimited(char('<'), recognize(many0_count(none_of(">"))), char('>')),
             many0(preceded(
