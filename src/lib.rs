@@ -1,3 +1,6 @@
+//! This crate provides utilities for parsing `Link` headers. See the [complete::link] method
+//! for more info
+
 use nom::{error::ParseError, AsChar, IResult, Parser};
 
 pub mod complete;

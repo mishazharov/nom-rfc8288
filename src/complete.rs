@@ -90,7 +90,7 @@ where
 }
 
 /// #rule
-/// #element => [ element ] *( OWS "," OWS [ element ] )
+/// #element => \[ element \] *( OWS "," OWS \[ element \] )
 ///
 /// RFC 9110 specifies that:
 ///
@@ -130,16 +130,20 @@ where
     )(input)
 }
 
+/// [LinkParam] is used represent the parsed data. It stores key value pairs from
+/// the Link header
 #[derive(PartialEq, Debug)]
 pub struct LinkParam<'a> {
     pub key: &'a str,
     // This has to be a String because we need to strip out quotes and slashes
     // necessitating an allocation. We could probably use an Enum, and return
-    // an &str when allocation isn't needed, but at this point the ease of use
+    // a &str when allocation isn't needed, but at this point the ease of use
     // is probably more important
     pub val: Option<String>,
 }
 
+/// The [LinkData] struct is used to store the URL provided in the Link header,
+/// as well as optional parameters.
 #[derive(PartialEq, Debug)]
 pub struct LinkData<'a> {
     pub url: &'a str,
@@ -150,6 +154,37 @@ pub struct LinkData<'a> {
 // and in fact the parser failed on the very first case I tried it on because of a trailing comma
 const NUM_EMPTY_ELEMENTS: usize = 2;
 
+/// This method will parse a [&str] and return an array of [Option]s if it can
+/// successfully parse the [&str] as a [Link](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Link) header.
+/// The reason we return [Option]s is because if the Link header has empty elements, we want to show that information
+/// to the user by returning [None]s.
+/// ```rust
+/// use nom_rfc8288::complete::{link, LinkData, LinkParam};
+///
+/// let link_data = r#"<https://example.com>; rel="origin"; csv="one,two""#;
+/// let parsed = link(link_data).unwrap();
+///
+/// assert_eq!(
+///     parsed,
+///     vec![
+///         Some(
+///             LinkData {
+///                 url: "https://example.com",
+///                 params: vec![
+///                     LinkParam {
+///                         key: "rel",
+///                         val: Some("origin".to_owned()),
+///                     },
+///                     LinkParam {
+///                         key: "csv",
+///                         val: Some("one,two".to_owned()),
+///                     }
+///                 ],
+///             }
+///         ),
+///     ]
+/// );
+/// ```
 pub fn link<'a, E>(
     input: &'a str,
 ) -> Result<Vec<Option<LinkData<'a>>>, nom::Err<VerboseError<&'a str>>>
