@@ -1,4 +1,7 @@
-use std::ops::{RangeFrom, RangeTo};
+use std::{
+    fmt::Display,
+    ops::{RangeFrom, RangeTo},
+};
 
 use itertools::Itertools;
 use nom::{
@@ -10,6 +13,8 @@ use nom::{
     sequence::{delimited, pair, preceded, tuple},
     AsChar, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition, Offset, Parser, Slice,
 };
+
+use thiserror::Error;
 
 use crate::{is_qdtext, is_quoted_pair, is_tchar, optional_parser};
 
@@ -150,6 +155,26 @@ pub struct LinkData<'a> {
     pub params: Vec<LinkParam<'a>>,
 }
 
+#[derive(Error, Debug)]
+pub enum LinkParseError {
+    #[error("left over data could not be parsed: `{0}`")]
+    IncompleteParse(String),
+    #[error("the data for key `{0}` is not available")]
+    FailedToParse(String),
+}
+
+impl<E> From<nom::Err<VerboseError<E>>> for LinkParseError
+where
+    E: Display,
+{
+    fn from(err: nom::Err<VerboseError<E>>) -> Self {
+        match err {
+            nom::Err::Incomplete(_) => Self::FailedToParse("Incomplete input".into()),
+            nom::Err::Error(err) | nom::Err::Failure(err) => Self::FailedToParse(err.to_string()),
+        }
+    }
+}
+
 // https://datatracker.ietf.org/doc/html/rfc9110#name-recipient-requirements states that we should deal with at least some null elements
 // and in fact the parser failed on the very first case I tried it on because of a trailing comma
 const NUM_EMPTY_ELEMENTS: usize = 2;
@@ -185,9 +210,7 @@ const NUM_EMPTY_ELEMENTS: usize = 2;
 ///     ]
 /// );
 /// ```
-pub fn link<'a, E>(
-    input: &'a str,
-) -> Result<Vec<Option<LinkData<'a>>>, nom::Err<VerboseError<&'a str>>>
+pub fn link<'a, E>(input: &'a str) -> Result<Vec<Option<LinkData<'a>>>, LinkParseError>
 where
     E: ParseError<&'a str>,
     nom::Err<VerboseError<&'a str>>: From<nom::Err<E>>,
@@ -196,7 +219,7 @@ where
         &'s str,
         Vec<Option<(&'s str, Vec<(&'s str, Option<&'s str>)>)>>,
     );
-    let (remainder, mut output): ParserOutput<'a> = list::<_, _, VerboseError<&str>, _>(
+    let parsed = list::<_, _, VerboseError<&str>, _>(
         NUM_EMPTY_ELEMENTS,
         tuple((
             delimited(char('<'), recognize(many0_count(none_of(">"))), char('>')),
@@ -212,13 +235,12 @@ where
             )),
         )),
         input,
-    )?;
+    );
+
+    let (remainder, mut output): ParserOutput<'a> = parsed?;
 
     if !remainder.is_empty() {
-        return Err(nom::Err::Error(VerboseError::from_char(
-            remainder,
-            remainder.chars().next().unwrap(),
-        )));
+        return Err(LinkParseError::IncompleteParse(remainder.to_owned()));
     }
 
     let res = output
@@ -236,7 +258,7 @@ where
                     let parsed_link_param_val = match link_param.1 {
                         None => None,
                         Some(link_param_val) if link_param_val.starts_with('"') => {
-                            match quoted_string_alloca::<&str, E>(link_param_val) {
+                            match quoted_string_alloca::<&str, VerboseError<&str>>(link_param_val) {
                                 Ok(s) => Some(s.1),
                                 Err(e) => return Err(e),
                             }
@@ -271,7 +293,9 @@ where
 mod tests {
     use nom::{error::VerboseError, Err as OutCome};
 
-    use crate::complete::{quoted_string, quoted_string_alloca, tchar, token, LinkData, LinkParam};
+    use crate::complete::{
+        quoted_string, quoted_string_alloca, tchar, token, LinkData, LinkParam, LinkParseError,
+    };
 
     use super::{link, list, quoted_pair};
 
@@ -422,5 +446,20 @@ mod tests {
                 ]
             })]
         );
+    }
+
+    #[test]
+    fn test_error_return_ergonomics() -> Result<(), LinkParseError> {
+        /// In version 0.2, trying to use the ? operator on the return value of the link function
+        /// would cause lifetime errors because we returned a [`VerboseError<'a str>]` wrapped in a [`nom::Error`]
+        fn function_with_return_val<'a>() -> Result<Vec<Option<LinkData<'a>>>, LinkParseError> {
+            let input = r##"</terms>; rel="copy\"right"; anchor=#foo"##;
+
+            link::<VerboseError<&str>>(input)
+        }
+
+        function_with_return_val()?;
+
+        Ok(())
     }
 }
