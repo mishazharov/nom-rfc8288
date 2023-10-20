@@ -18,9 +18,11 @@ use thiserror::Error;
 
 use crate::{is_qdtext, is_quoted_pair, is_tchar, optional_parser};
 
+/// ```text
 /// TCHAR = "!" / "#" / "$" / "%" / "&" / "'" / "*"
 ///       / "+" / "-" / "." / "^" / "_" / "`" / "|" / "~"
 ///       / DIGIT / ALPHA
+/// ```
 pub fn tchar<I, E>(input: I) -> IResult<I, char, E>
 where
     I: InputIter + Slice<RangeFrom<usize>>,
@@ -30,7 +32,7 @@ where
     satisfy(is_tchar)(input)
 }
 
-/// TOKEN = 1*TCHAR
+/// `TOKEN = 1*TCHAR`
 pub fn token<I, E>(input: I) -> IResult<I, I, E>
 where
     I: InputIter + Slice<RangeFrom<usize>> + Slice<RangeTo<usize>> + Copy + InputLength + Offset,
@@ -40,7 +42,7 @@ where
     recognize(many1_count(tchar))(input)
 }
 
-/// QDTEXT = HTAB / SP / %x21 / %x23-5B / %x5D-7E / obs-text
+/// `QDTEXT = HTAB / SP / %x21 / %x23-5B / %x5D-7E / obs-text`
 pub fn qdtext<I, E>(input: I) -> IResult<I, char, E>
 where
     I: InputIter + Slice<RangeFrom<usize>> + Copy,
@@ -50,7 +52,7 @@ where
     satisfy(is_qdtext)(input)
 }
 
-/// QUOTED-PAIR = "\" ( HTAB / SP / VCHAR / obs-text )
+/// `QUOTED-PAIR = "\" ( HTAB / SP / VCHAR / obs-text )`
 fn quoted_pair<I, E>(input: I) -> IResult<I, char, E>
 where
     I: InputIter + Slice<RangeFrom<usize>> + Copy,
@@ -60,7 +62,7 @@ where
     preceded(char('\\'), satisfy(is_quoted_pair))(input)
 }
 
-/// QUOTED-STRING = DQUOTE *( qdtext / quoted-pair ) DQUOTE
+/// `QUOTED-STRING = DQUOTE *( qdtext / quoted-pair ) DQUOTE`
 ///
 /// If the parser succeeds, we return the unmodified string (with backslashes included)
 /// to prevent allocation and to make sure that all of the return types are consistent
@@ -94,8 +96,10 @@ where
     ))(input)
 }
 
+/// ```text
 /// #rule
-/// #element => \[ element \] *( OWS "," OWS \[ element \] )
+/// #element => [ element ] *( OWS "," OWS [ element ] )
+/// ```
 ///
 /// RFC 9110 specifies that:
 ///
@@ -163,6 +167,7 @@ pub enum LinkParseError {
     FailedToParse(String),
 }
 
+#[doc(hidden)]
 impl<E> From<nom::Err<VerboseError<E>>> for LinkParseError
 where
     E: Display,
