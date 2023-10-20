@@ -13,9 +13,11 @@ use nom::{
 
 use crate::{is_qdtext, is_quoted_pair, is_tchar};
 
+/// ```text
 /// TCHAR = "!" / "#" / "$" / "%" / "&" / "'" / "*"
 ///       / "+" / "-" / "." / "^" / "_" / "`" / "|" / "~"
 ///       / DIGIT / ALPHA
+/// ```
 pub fn tchar<I, E>(input: I) -> IResult<I, char, E>
 where
     I: InputIter + Slice<RangeFrom<usize>>,
@@ -25,7 +27,7 @@ where
     satisfy(is_tchar)(input)
 }
 
-/// TOKEN = 1*TCHAR
+/// `TOKEN = 1*TCHAR`
 pub fn token<I, E>(input: I) -> IResult<I, I, E>
 where
     I: InputIter + Slice<RangeFrom<usize>> + Slice<RangeTo<usize>> + Copy + InputLength + Offset,
@@ -35,7 +37,7 @@ where
     recognize(many1_count(tchar))(input)
 }
 
-/// QDTEXT = HTAB / SP / %x21 / %x23-5B / %x5D-7E / obs-text
+/// `QDTEXT = HTAB / SP / %x21 / %x23-5B / %x5D-7E / obs-text`
 pub fn qdtext<I, E>(input: I) -> IResult<I, char, E>
 where
     I: InputIter + Slice<RangeFrom<usize>> + Copy,
@@ -45,7 +47,7 @@ where
     satisfy(is_qdtext)(input)
 }
 
-/// QUOTED-PAIR = "\" ( HTAB / SP / VCHAR / obs-text )
+/// `QUOTED-PAIR = "\" ( HTAB / SP / VCHAR / obs-text )`
 fn quoted_pair<I, E>(input: I) -> IResult<I, char, E>
 where
     I: InputIter + Slice<RangeFrom<usize>> + Copy + InputLength,
@@ -55,7 +57,7 @@ where
     preceded(char('\\'), satisfy(is_quoted_pair))(input)
 }
 
-/// QUOTED-STRING = DQUOTE *( qdtext / quoted-pair ) DQUOTE
+/// `QUOTED-STRING = DQUOTE *( qdtext / quoted-pair ) DQUOTE`
 pub fn quoted_string<I, E>(input: I) -> IResult<I, String, E>
 where
     I: InputIter + Slice<RangeFrom<usize>> + Slice<RangeTo<usize>> + Copy + InputLength + Offset,

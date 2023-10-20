@@ -10,9 +10,11 @@ pub mod streaming;
 
 /// Token character
 ///
+/// ```text
 /// TCHAR = "!" / "#" / "$" / "%" / "&" / "'" / "*"
 ///       / "+" / "-" / "." / "^" / "_" / "`" / "|" / "~"
 ///       / DIGIT / ALPHA
+/// ```
 pub fn is_tchar(c: impl AsChar) -> bool {
     // This is implemented as one match statement because to call
     // is_alpha and is_digit would impose the Copy trait on this
@@ -25,12 +27,12 @@ pub fn is_tchar(c: impl AsChar) -> bool {
     )
 }
 
-/// QDTEXT = HTAB / SP / %x21 / %x23-5B / %x5D-7E / obs-text
+/// `QDTEXT = HTAB / SP / %x21 / %x23-5B / %x5D-7E / obs-text`
 pub fn is_qdtext(c: impl AsChar) -> bool {
     matches!(c.as_char(), '\t' | ' ' | '\x21' | '\x23' ..= '\x5B' | '\x5D' ..= '\x7E' | '\u{80}' ..= '\u{FF}')
 }
 
-/// Only implements the ( HTAB / SP / VCHAR / obs-text ) component of QUOTED-PAIR
+/// Only implements the `( HTAB / SP / VCHAR / obs-text )` component of QUOTED-PAIR
 fn is_quoted_pair(c: impl AsChar) -> bool {
     // https://datatracker.ietf.org/doc/html/rfc7230#section-3.2.6
     matches!(c.as_char(), '\t' | ' ' | '\x21' ..= '\x7E' | '\u{80}' ..= '\u{FF}')
