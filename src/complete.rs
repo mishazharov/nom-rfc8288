@@ -159,7 +159,35 @@ pub struct LinkData<'a> {
     pub params: Vec<LinkParam<'a>>,
 }
 
-#[derive(Error, Debug)]
+pub struct LinkParamOwned {
+    pub key: String,
+    pub val: Option<String>,
+}
+
+pub struct LinkDataOwned {
+    pub url: String,
+    pub params: Vec<LinkParamOwned>,
+}
+
+impl<'a> LinkParam<'a> {
+    pub fn to_owned(&self) -> LinkParamOwned {
+        LinkParamOwned {
+            key: self.key.to_owned(),
+            val: self.val.to_owned(),
+        }
+    }
+}
+
+impl<'a> LinkData<'a> {
+    pub fn to_owned(&self) -> LinkDataOwned {
+        LinkDataOwned {
+            url: self.url.to_owned(),
+            params: self.params.iter().map(|x| x.to_owned()).collect_vec(),
+        }
+    }
+}
+
+#[derive(Error, Debug, Clone)]
 pub enum LinkParseError {
     #[error("left over data could not be parsed: `{0}`")]
     IncompleteParse(String),
@@ -296,10 +324,12 @@ where
 
 #[cfg(test)]
 mod tests {
+    use itertools::Itertools;
     use nom::{error::VerboseError, Err as OutCome};
 
     use crate::complete::{
-        quoted_string, quoted_string_alloca, tchar, token, LinkData, LinkParam, LinkParseError,
+        quoted_string, quoted_string_alloca, tchar, token, LinkData, LinkDataOwned, LinkParam,
+        LinkParseError,
     };
 
     use super::{link, list, quoted_pair};
@@ -466,5 +496,23 @@ mod tests {
         function_with_return_val()?;
 
         Ok(())
+    }
+
+    #[test]
+    fn test_can_clone_nicely() {
+        fn function_with_return_val<'a>() -> Vec<Option<LinkDataOwned>> {
+            let input = r##"</terms>; rel="copy\"right"; anchor=#foo"##.to_owned();
+
+            link::<VerboseError<&str>>(&input)
+                .unwrap()
+                .iter()
+                .map(|x| match x {
+                    Some(x) => Some(x.to_owned()),
+                    None => None,
+                })
+                .collect_vec()
+        }
+
+        function_with_return_val();
     }
 }
