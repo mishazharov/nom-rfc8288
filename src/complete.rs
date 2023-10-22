@@ -159,11 +159,13 @@ pub struct LinkData<'a> {
     pub params: Vec<LinkParam<'a>>,
 }
 
+#[derive(PartialEq, Debug)]
 pub struct LinkParamOwned {
     pub key: String,
     pub val: Option<String>,
 }
 
+#[derive(PartialEq, Debug)]
 pub struct LinkDataOwned {
     pub url: String,
     pub params: Vec<LinkParamOwned>,
