@@ -41,7 +41,7 @@ dependencies = [
 
 [[package]]
 name = "nom-rfc8288"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "itertools",
  "nom",
