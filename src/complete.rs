@@ -171,7 +171,7 @@ pub struct LinkDataOwned {
     pub params: Vec<LinkParamOwned>,
 }
 
-impl<'a> LinkParam<'a> {
+impl LinkParam<'_> {
     pub fn to_owned(&self) -> LinkParamOwned {
         LinkParamOwned {
             key: self.key.to_owned(),
@@ -180,7 +180,7 @@ impl<'a> LinkParam<'a> {
     }
 }
 
-impl<'a> LinkData<'a> {
+impl LinkData<'_> {
     pub fn to_owned(&self) -> LinkDataOwned {
         LinkDataOwned {
             url: self.url.to_owned(),
