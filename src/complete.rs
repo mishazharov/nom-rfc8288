@@ -180,7 +180,7 @@ impl LinkParam<'_> {
     }
 }
 
-impl<'a> LinkData<'a> {
+impl LinkData<'_> {
     pub fn to_owned(&self) -> LinkDataOwned {
         LinkDataOwned {
             url: self.url.to_owned(),
