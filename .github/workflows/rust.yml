@@ -4,10 +4,13 @@ on: [push]
 jobs:
   cargo-test:
     runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        cargo_params: ["", "--features=lenient",]
     steps:
       - uses: actions/checkout@v3
       - run: cargo build
-      - run: cargo test
+      - run: cargo test ${{ matrix.cargo_params }}
 
   cargo-fmt:
     runs-on: ubuntu-22.04
