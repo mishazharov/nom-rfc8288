@@ -183,7 +183,7 @@ impl LinkData<'_> {
     }
 }
 
-#[derive(Error, Debug, Clone)]
+#[derive(Error, Debug, Clone, PartialEq)]
 pub enum LinkParseError {
     #[error("left over data could not be parsed: `{0}`")]
     IncompleteParse(String),
@@ -208,15 +208,20 @@ where
 // and in fact the parser failed on the very first case I tried it on because of a trailing comma
 const NUM_EMPTY_ELEMENTS: usize = 2;
 
+enum ParseStrictness {
+    Strict,
+    Lenient,
+}
+
 /// This method will parse a [`&str`] and return an array of [`Option`]s if it can
 /// successfully parse the [`&str`] as a [Link](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Link) header.
 /// The reason we return [`Option`]s is because if the Link header has empty elements, we want to show that information
 /// to the user by returning [`None`]s.
 /// ```rust
-/// use nom_rfc8288::complete::{link, LinkData, LinkParam};
+/// use nom_rfc8288::complete::{link_strict, LinkData, LinkParam};
 ///
 /// let link_data = r#"<https://example.com>; rel="origin"; csv="one,two""#;
-/// let parsed = link(link_data).unwrap();
+/// let parsed = link_strict(link_data).unwrap();
 ///
 /// assert_eq!(
 ///     parsed,
@@ -239,14 +244,54 @@ const NUM_EMPTY_ELEMENTS: usize = 2;
 ///     ]
 /// );
 /// ```
+pub fn link_strict<'a, E>(input: &'a str) -> Result<Vec<Option<LinkData<'a>>>, LinkParseError>
+where
+    E: ParseError<&'a str>,
+    nom::Err<VerboseError<&'a str>>: From<nom::Err<E>>,
+{
+    link_inner(input, ParseStrictness::Strict)
+}
+
+/// Same as [`link_strict`], except that empty parameters are leniently parsed. They don't result
+/// in an error and are skipped when collecting parameters.
+///
+/// ```rust
+/// use nom_rfc8288::complete::link_lenient;
+///
+/// let link_data = r#"<https://example.com>; rel="origin";; csv="one,two""#;
+/// assert!(link_lenient(link_data).is_ok());
+/// ```
+pub fn link_lenient<'a, E>(input: &'a str) -> Result<Vec<Option<LinkData<'a>>>, LinkParseError>
+where
+    E: ParseError<&'a str>,
+    nom::Err<VerboseError<&'a str>>: From<nom::Err<E>>,
+{
+    link_inner(input, ParseStrictness::Lenient)
+}
+
+/// Same as [`link_strict`], but with the original name. When lenient parsing was introduced,
+/// to avoid ambiguity the function was renamed. To avoid breakages, the function still exists,
+/// but instead use [`link_strict`].
+#[deprecated(since = "0.4.0", note = "please use `link_strict` instead")]
 pub fn link<'a, E>(input: &'a str) -> Result<Vec<Option<LinkData<'a>>>, LinkParseError>
+where
+    E: ParseError<&'a str>,
+    nom::Err<VerboseError<&'a str>>: From<nom::Err<E>>,
+{
+    link_inner(input, ParseStrictness::Strict)
+}
+
+fn link_inner<'a, E>(
+    input: &'a str,
+    strictness: ParseStrictness,
+) -> Result<Vec<Option<LinkData<'a>>>, LinkParseError>
 where
     E: ParseError<&'a str>,
     nom::Err<VerboseError<&'a str>>: From<nom::Err<E>>,
 {
     type ParserOutput<'s> = (
         &'s str,
-        Vec<Option<(&'s str, Vec<(&'s str, Option<&'s str>)>)>>,
+        Vec<Option<(&'s str, Vec<Option<(&'s str, Option<&'s str>)>>)>>,
     );
     let parsed = list::<_, _, VerboseError<&str>, _>(
         NUM_EMPTY_ELEMENTS,
@@ -254,13 +299,13 @@ where
             delimited(char('<'), recognize(many0_count(none_of(">"))), char('>')),
             many0(preceded(
                 (space0, char(';'), space0),
-                pair(
+                opt(pair(
                     token::<&str, VerboseError<&str>>,
                     opt(preceded(
                         pair(char('='), space0),
                         alt((quoted_string, token)),
                     )),
-                ),
+                )),
             )),
         ),
         input,
@@ -284,24 +329,40 @@ where
                 .1
                 .drain(..)
                 .map(|link_param| {
+                    let Some(link_param) = link_param else {
+                        match strictness {
+                            ParseStrictness::Strict => {
+                                return Err(LinkParseError::IncompleteParse(
+                                    "Empty parameter is disallowed".to_owned(),
+                                ));
+                            }
+                            ParseStrictness::Lenient => {
+                                return Ok(None);
+                            }
+                        }
+                    };
                     let parsed_link_param_val = match link_param.1 {
                         None => None,
                         Some(link_param_val) if link_param_val.starts_with('"') => {
                             match quoted_string_alloca::<&str, VerboseError<&str>>(link_param_val) {
                                 Ok(s) => Some(s.1),
-                                Err(e) => return Err(e),
+                                Err(e) => {
+                                    return Err(e.into());
+                                }
                             }
                         }
                         Some(link_param_val) => Some(link_param_val.to_owned()),
                     };
 
-                    Ok(LinkParam {
+                    Ok(Some(LinkParam {
                         key: link_param.0,
                         val: parsed_link_param_val,
-                    })
+                    }))
                 })
                 .fold_ok(Vec::new(), |mut acc, item| {
-                    acc.push(item);
+                    if let Some(param) = item {
+                        acc.push(param);
+                    }
                     acc
                 })?;
 
@@ -327,7 +388,7 @@ mod tests {
         tchar, token,
     };
 
-    use super::{link, list, quoted_pair};
+    use super::{link_lenient, link_strict, list, quoted_pair};
 
     #[test]
     fn test_tchar() {
@@ -410,7 +471,45 @@ mod tests {
     fn test_link() {
         let input = r##"</terms>; rel="copyright"; anchor="#foo""##;
 
-        let res = link::<VerboseError<&str>>(input).unwrap();
+        let res = link_strict::<VerboseError<&str>>(input).unwrap();
+
+        assert_eq!(
+            res,
+            vec![Some(LinkData {
+                url: "/terms",
+                params: vec![
+                    LinkParam {
+                        key: "rel",
+                        val: Some("copyright".into())
+                    },
+                    LinkParam {
+                        key: "anchor",
+                        val: Some("#foo".into())
+                    }
+                ]
+            })]
+        );
+    }
+
+    #[test]
+    fn test_empty_param_with_strict_parsing() {
+        let input = r##"</terms>; rel="copyright";; anchor="#foo""##;
+
+        let res = link_strict::<VerboseError<&str>>(input);
+
+        assert_eq!(
+            res,
+            Err(LinkParseError::IncompleteParse(
+                "Empty parameter is disallowed".to_owned()
+            ))
+        );
+    }
+
+    #[test]
+    fn test_empty_param_with_lenient_parsing() {
+        let input = r##"</terms>; rel="copyright";; anchor="#foo""##;
+
+        let res = link_lenient::<VerboseError<&str>>(input).unwrap();
 
         assert_eq!(
             res,
@@ -458,7 +557,7 @@ mod tests {
     fn test_link_quoted_link_param() {
         let input = r##"</terms>; rel="copy\"right"; anchor=#foo"##;
 
-        let res = link::<VerboseError<&str>>(input).unwrap();
+        let res = link_strict::<VerboseError<&str>>(input).unwrap();
 
         assert_eq!(
             res,
@@ -485,7 +584,7 @@ mod tests {
         fn function_with_return_val<'a>() -> Result<Vec<Option<LinkData<'a>>>, LinkParseError> {
             let input = r##"</terms>; rel="copy\"right"; anchor=#foo"##;
 
-            link::<VerboseError<&str>>(input)
+            link_strict::<VerboseError<&str>>(input)
         }
 
         function_with_return_val()?;
@@ -498,7 +597,7 @@ mod tests {
         fn function_with_return_val<'a>() -> Vec<Option<LinkDataOwned>> {
             let input = r##"</terms>; rel="copy\"right"; anchor=#foo"##.to_owned();
 
-            link::<VerboseError<&str>>(&input)
+            link_strict::<VerboseError<&str>>(&input)
                 .unwrap()
                 .iter()
                 .map(|x| match x {
