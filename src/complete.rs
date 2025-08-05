@@ -189,7 +189,7 @@ impl LinkData<'_> {
     }
 }
 
-#[derive(Error, Debug, Clone)]
+#[derive(Error, Debug, Clone, PartialEq)]
 pub enum LinkParseError {
     #[error("left over data could not be parsed: `{0}`")]
     IncompleteParse(String),
@@ -252,7 +252,7 @@ where
 {
     type ParserOutput<'s> = (
         &'s str,
-        Vec<Option<(&'s str, Vec<(&'s str, Option<&'s str>)>)>>,
+        Vec<Option<(&'s str, Vec<Option<(&'s str, Option<&'s str>)>>)>>,
     );
     let parsed = list::<_, _, VerboseError<&str>, _>(
         NUM_EMPTY_ELEMENTS,
@@ -260,13 +260,13 @@ where
             delimited(char('<'), recognize(many0_count(none_of(">"))), char('>')),
             many0(preceded(
                 tuple((space0, char(';'), space0)),
-                pair(
+                opt(pair(
                     token::<&str, VerboseError<&str>>,
                     opt(preceded(
                         pair(char('='), space0),
                         alt((quoted_string, token)),
                     )),
-                ),
+                )),
             )),
         )),
         input,
@@ -290,24 +290,39 @@ where
                 .1
                 .drain(..)
                 .map(|link_param| {
+                    let Some(link_param) = link_param else {
+                        #[cfg(feature = "lenient")]
+                        return Ok(None);
+                        #[cfg(not(feature = "lenient"))]
+                        return Err(LinkParseError::IncompleteParse(
+                            "Empty parameter is disallowed".to_owned(),
+                        ));
+                    };
                     let parsed_link_param_val = match link_param.1 {
                         None => None,
                         Some(link_param_val) if link_param_val.starts_with('"') => {
                             match quoted_string_alloca::<&str, VerboseError<&str>>(link_param_val) {
                                 Ok(s) => Some(s.1),
-                                Err(e) => return Err(e),
+                                Err(e) => {
+                                    #[cfg(feature = "lenient")]
+                                    return Err(e);
+                                    #[cfg(not(feature = "lenient"))]
+                                    return Err(e.into());
+                                }
                             }
                         }
                         Some(link_param_val) => Some(link_param_val.to_owned()),
                     };
 
-                    Ok(LinkParam {
+                    Ok(Some(LinkParam {
                         key: link_param.0,
                         val: parsed_link_param_val,
-                    })
+                    }))
                 })
                 .fold_ok(Vec::new(), |mut acc, item| {
-                    acc.push(item);
+                    if let Some(param) = item {
+                        acc.push(param);
+                    }
                     acc
                 })?;
 
@@ -432,6 +447,46 @@ mod tests {
                     }
                 ]
             })]
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "lenient")]
+    fn test_empty_param_with_lenient_parsing() {
+        let input = r##"</terms>; rel="copyright";; anchor="#foo""##;
+
+        let res = link::<VerboseError<&str>>(input).unwrap();
+
+        assert_eq!(
+            res,
+            vec![Some(LinkData {
+                url: "/terms",
+                params: vec![
+                    LinkParam {
+                        key: "rel",
+                        val: Some("copyright".into())
+                    },
+                    LinkParam {
+                        key: "anchor",
+                        val: Some("#foo".into())
+                    }
+                ]
+            })]
+        );
+    }
+
+    #[test]
+    #[cfg(not(feature = "lenient"))]
+    fn test_empty_param_without_lenient_parsing() {
+        let input = r##"</terms>; rel="copyright";; anchor="#foo""##;
+
+        let res = link::<VerboseError<&str>>(input);
+
+        assert_eq!(
+            res,
+            Err(LinkParseError::IncompleteParse(
+                "Empty parameter is disallowed".to_owned()
+            ))
         );
     }
 
