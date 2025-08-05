@@ -5,13 +5,13 @@ use std::{
 
 use itertools::Itertools;
 use nom::{
+    AsChar, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition, Offset, Parser, Slice,
     branch::alt,
     character::complete::{char, none_of, satisfy, space0},
     combinator::{all_consuming, opt, recognize},
     error::{ParseError, VerboseError},
-    multi::{fold_many0, many0, many0_count, many1_count, many_m_n, separated_list1},
+    multi::{fold_many0, many_m_n, many0, many0_count, many1_count, separated_list1},
     sequence::{delimited, pair, preceded, tuple},
-    AsChar, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition, Offset, Parser, Slice,
 };
 
 use thiserror::Error;
@@ -278,7 +278,7 @@ where
         return Err(LinkParseError::IncompleteParse(remainder.to_owned()));
     }
 
-    let res = output
+    output
         .drain(..)
         .map(|parsed_link| {
             let mut parsed_link = match parsed_link {
@@ -319,19 +319,17 @@ where
         .fold_ok(Vec::new(), |mut acc, item| {
             acc.push(item);
             acc
-        });
-
-    res
+        })
 }
 
 #[cfg(test)]
 mod tests {
     use itertools::Itertools;
-    use nom::{error::VerboseError, Err as OutCome};
+    use nom::{Err as OutCome, error::VerboseError};
 
     use crate::complete::{
-        quoted_string, quoted_string_alloca, tchar, token, LinkData, LinkDataOwned, LinkParam,
-        LinkParseError,
+        LinkData, LinkDataOwned, LinkParam, LinkParseError, quoted_string, quoted_string_alloca,
+        tchar, token,
     };
 
     use super::{link, list, quoted_pair};
