@@ -1,18 +1,16 @@
-use std::{
-    fmt::Display,
-    ops::{RangeFrom, RangeTo},
-};
+use std::fmt::Display;
 
 use itertools::Itertools;
 use nom::{
-    AsChar, IResult, InputIter, InputLength, InputTake, InputTakeAtPosition, Offset, Parser, Slice,
+    AsChar, IResult, Input, Offset, Parser,
     branch::alt,
     character::complete::{char, none_of, satisfy, space0},
     combinator::{all_consuming, opt, recognize},
-    error::{ParseError, VerboseError},
+    error::ParseError,
     multi::{fold_many0, many_m_n, many0, many0_count, many1_count, separated_list1},
-    sequence::{delimited, pair, preceded, tuple},
+    sequence::{delimited, pair, preceded},
 };
+use nom_language::error::VerboseError;
 
 use thiserror::Error;
 
@@ -25,41 +23,41 @@ use crate::{is_qdtext, is_quoted_pair, is_tchar, optional_parser};
 /// ```
 pub fn tchar<I, E>(input: I) -> IResult<I, char, E>
 where
-    I: InputIter + Slice<RangeFrom<usize>>,
-    <I as InputIter>::Item: AsChar,
+    I: Input,
+    <I as Input>::Item: AsChar,
     E: ParseError<I>,
 {
-    satisfy(is_tchar)(input)
+    satisfy(is_tchar).parse(input)
 }
 
 /// `TOKEN = 1*TCHAR`
 pub fn token<I, E>(input: I) -> IResult<I, I, E>
 where
-    I: InputIter + Slice<RangeFrom<usize>> + Slice<RangeTo<usize>> + Copy + InputLength + Offset,
-    <I as InputIter>::Item: AsChar,
+    I: Input + Offset,
+    <I as Input>::Item: AsChar,
     E: ParseError<I>,
 {
-    recognize(many1_count(tchar))(input)
+    recognize(many1_count(tchar)).parse(input)
 }
 
 /// `QDTEXT = HTAB / SP / %x21 / %x23-5B / %x5D-7E / obs-text`
 pub fn qdtext<I, E>(input: I) -> IResult<I, char, E>
 where
-    I: InputIter + Slice<RangeFrom<usize>> + Copy,
-    <I as InputIter>::Item: AsChar,
+    I: Input,
+    <I as Input>::Item: AsChar,
     E: ParseError<I>,
 {
-    satisfy(is_qdtext)(input)
+    satisfy(is_qdtext).parse(input)
 }
 
 /// `QUOTED-PAIR = "\" ( HTAB / SP / VCHAR / obs-text )`
 fn quoted_pair<I, E>(input: I) -> IResult<I, char, E>
 where
-    I: InputIter + Slice<RangeFrom<usize>> + Copy,
-    <I as InputIter>::Item: AsChar,
+    I: Input,
+    <I as Input>::Item: AsChar,
     E: ParseError<I>,
 {
-    preceded(char('\\'), satisfy(is_quoted_pair))(input)
+    preceded(char('\\'), satisfy(is_quoted_pair)).parse(input)
 }
 
 /// `QUOTED-STRING = DQUOTE *( qdtext / quoted-pair ) DQUOTE`
@@ -69,21 +67,22 @@ where
 /// when using nom combinators
 fn quoted_string<I, E>(input: I) -> IResult<I, I, E>
 where
-    I: InputIter + Slice<RangeFrom<usize>> + Slice<RangeTo<usize>> + Copy + InputLength + Offset,
-    <I as InputIter>::Item: AsChar,
+    I: Input + Offset,
+    <I as Input>::Item: AsChar,
     E: ParseError<I>,
 {
     recognize(delimited(
         char('"'),
         recognize(many0_count(alt((quoted_pair, qdtext)))),
         char('"'),
-    ))(input)
+    ))
+    .parse(input)
 }
 
 fn quoted_string_alloca<I, E>(input: I) -> IResult<I, String, E>
 where
-    I: InputIter + Slice<RangeFrom<usize>> + Copy + InputLength,
-    <I as InputIter>::Item: AsChar,
+    I: Input,
+    <I as Input>::Item: AsChar,
     E: ParseError<I>,
 {
     all_consuming(delimited(
@@ -93,7 +92,8 @@ where
             acc
         }),
         char('"'),
-    ))(input)
+    ))
+    .parse(input)
 }
 
 /// ```text
@@ -120,23 +120,17 @@ pub fn list<I, O, E, L>(
     input: I,
 ) -> IResult<I, Vec<Option<O>>, E>
 where
-    L: Parser<I, O, E>,
+    L: Parser<I, Output = O, Error = E>,
     E: ParseError<I>,
-    I: InputLength
-        + Clone
-        + Copy
-        + InputTakeAtPosition
-        + InputIter
-        + InputTake
-        + Slice<RangeFrom<usize>>,
-    <I as InputIter>::Item: Clone + AsChar,
-    <I as InputTakeAtPosition>::Item: AsChar + Clone,
+    I: Input + std::marker::Copy,
+    <I as Input>::Item: AsChar,
 {
     let allow_empty_elements = reasonable_count != 0;
     separated_list1(
-        many_m_n(1, reasonable_count + 1, tuple((space0, char(','), space0))),
+        many_m_n(1, reasonable_count + 1, (space0, char(','), space0)),
         optional_parser(allow_empty_elements, element),
-    )(input)
+    )
+    .parse(input)
 }
 
 /// [`LinkParam`] is used represent the parsed data. It stores key value pairs from
@@ -256,10 +250,10 @@ where
     );
     let parsed = list::<_, _, VerboseError<&str>, _>(
         NUM_EMPTY_ELEMENTS,
-        tuple((
+        (
             delimited(char('<'), recognize(many0_count(none_of(">"))), char('>')),
             many0(preceded(
-                tuple((space0, char(';'), space0)),
+                (space0, char(';'), space0),
                 pair(
                     token::<&str, VerboseError<&str>>,
                     opt(preceded(
@@ -268,7 +262,7 @@ where
                     )),
                 ),
             )),
-        )),
+        ),
         input,
     );
 
@@ -325,7 +319,8 @@ where
 #[cfg(test)]
 mod tests {
     use itertools::Itertools;
-    use nom::{Err as OutCome, error::VerboseError};
+    use nom::Err as OutCome;
+    use nom_language::error::VerboseError;
 
     use crate::complete::{
         LinkData, LinkDataOwned, LinkParam, LinkParseError, quoted_string, quoted_string_alloca,

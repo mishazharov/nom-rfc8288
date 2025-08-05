@@ -1,7 +1,5 @@
-use std::ops::{RangeFrom, RangeTo};
-
 use nom::{
-    AsChar, IResult, InputIter, InputLength, Offset, Slice,
+    AsChar, IResult, Input, Offset, Parser,
     branch::alt,
     character::streaming::char,
     character::streaming::satisfy,
@@ -20,28 +18,28 @@ use crate::{is_qdtext, is_quoted_pair, is_tchar};
 /// ```
 pub fn tchar<I, E>(input: I) -> IResult<I, char, E>
 where
-    I: InputIter + Slice<RangeFrom<usize>>,
-    <I as InputIter>::Item: AsChar,
+    I: Input,
+    <I as Input>::Item: AsChar,
     E: ParseError<I>,
 {
-    satisfy(is_tchar)(input)
+    satisfy(is_tchar).parse(input)
 }
 
 /// `TOKEN = 1*TCHAR`
 pub fn token<I, E>(input: I) -> IResult<I, I, E>
 where
-    I: InputIter + Slice<RangeFrom<usize>> + Slice<RangeTo<usize>> + Copy + InputLength + Offset,
-    <I as InputIter>::Item: AsChar,
+    I: Input + Copy + Offset,
+    <I as Input>::Item: AsChar,
     E: ParseError<I>,
 {
-    recognize(many1_count(tchar))(input)
+    recognize(many1_count(tchar)).parse(input)
 }
 
 /// `QDTEXT = HTAB / SP / %x21 / %x23-5B / %x5D-7E / obs-text`
 pub fn qdtext<I, E>(input: I) -> IResult<I, char, E>
 where
-    I: InputIter + Slice<RangeFrom<usize>> + Copy,
-    <I as InputIter>::Item: AsChar,
+    I: Input + Copy,
+    <I as Input>::Item: AsChar,
     E: ParseError<I>,
 {
     satisfy(is_qdtext)(input)
@@ -50,18 +48,18 @@ where
 /// `QUOTED-PAIR = "\" ( HTAB / SP / VCHAR / obs-text )`
 fn quoted_pair<I, E>(input: I) -> IResult<I, char, E>
 where
-    I: InputIter + Slice<RangeFrom<usize>> + Copy + InputLength,
-    <I as InputIter>::Item: AsChar,
+    I: Input + Copy,
+    <I as Input>::Item: AsChar,
     E: ParseError<I>,
 {
-    preceded(char('\\'), satisfy(is_quoted_pair))(input)
+    preceded(char('\\'), satisfy(is_quoted_pair)).parse(input)
 }
 
 /// `QUOTED-STRING = DQUOTE *( qdtext / quoted-pair ) DQUOTE`
 pub fn quoted_string<I, E>(input: I) -> IResult<I, String, E>
 where
-    I: InputIter + Slice<RangeFrom<usize>> + Slice<RangeTo<usize>> + Copy + InputLength + Offset,
-    <I as InputIter>::Item: AsChar,
+    I: Input + Copy + Offset,
+    <I as Input>::Item: AsChar,
     E: ParseError<I>,
 {
     delimited(
@@ -75,12 +73,14 @@ where
             },
         ),
         char('"'),
-    )(input)
+    )
+    .parse(input)
 }
 
 #[cfg(test)]
 mod tests {
-    use nom::{Err as OutCome, Needed, error::VerboseError};
+    use nom::{Err as OutCome, Needed};
+    use nom_language::error::VerboseError;
 
     use crate::streaming::{quoted_string, tchar, token};
 
