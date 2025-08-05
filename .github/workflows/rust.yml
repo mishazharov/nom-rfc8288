@@ -1,6 +1,11 @@
 name: Test Pipeline
 run-name: ${{ github.actor }} is running the test pipeline
-on: [push]
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
 jobs:
   cargo-test:
     runs-on: ubuntu-22.04
