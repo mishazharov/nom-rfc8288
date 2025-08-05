@@ -1,6 +1,7 @@
 use std::ops::{RangeFrom, RangeTo};
 
 use nom::{
+    AsChar, IResult, InputIter, InputLength, Offset, Slice,
     branch::alt,
     character::streaming::char,
     character::streaming::satisfy,
@@ -8,7 +9,6 @@ use nom::{
     error::ParseError,
     multi::{fold_many0, many1_count},
     sequence::{delimited, preceded},
-    AsChar, IResult, InputIter, InputLength, Offset, Slice,
 };
 
 use crate::{is_qdtext, is_quoted_pair, is_tchar};
@@ -80,7 +80,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use nom::{error::VerboseError, Err as OutCome, Needed};
+    use nom::{Err as OutCome, Needed, error::VerboseError};
 
     use crate::streaming::{quoted_string, tchar, token};
 

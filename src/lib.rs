@@ -3,7 +3,7 @@
 
 #![deny(rustdoc::broken_intra_doc_links)]
 
-use nom::{error::ParseError, AsChar, IResult, Parser};
+use nom::{AsChar, IResult, Parser, error::ParseError};
 
 pub mod complete;
 pub mod streaming;
