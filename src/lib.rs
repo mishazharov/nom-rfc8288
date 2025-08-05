@@ -3,7 +3,7 @@
 
 #![deny(rustdoc::broken_intra_doc_links)]
 
-use nom::{AsChar, IResult, Parser, error::ParseError};
+use nom::{AsChar, IResult, Input, Parser, error::ParseError};
 
 pub mod complete;
 pub mod streaming;
@@ -44,9 +44,9 @@ fn optional_parser<I, O, E, L>(
     mut element: L,
 ) -> impl FnMut(I) -> IResult<I, Option<O>, E>
 where
-    L: Parser<I, O, E>,
+    L: Parser<I, Error = E, Output = O>,
     E: ParseError<I>,
-    I: Copy,
+    I: Input + Copy + std::marker::Copy,
 {
     move |input: I| {
         let res = element.parse(input);
