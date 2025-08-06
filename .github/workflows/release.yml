@@ -22,5 +22,5 @@ jobs:
         run: exit 1
       - run: cargo login
       - run: cargo publish
-    env: # Or as an environment variable
+    env:
       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
