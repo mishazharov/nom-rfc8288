@@ -2,6 +2,9 @@ name: Release Pipeline
 run-name: ${{ github.actor }} is running the release pipeline
 on:
   workflow_dispatch:
+  push:
+    tags:
+      - v*
 
 jobs:
   testing:
@@ -12,6 +15,11 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
+      - name: Store cargo version
+        run: echo "cargo_version=v$(cargo metadata --format-version=1 --no-deps | jq -r '.packages[0].version')" >> $GITHUB_ENV
+      - name: Fail release if version doesn't match tag
+        if: ${{ env.cargo_version != github.ref_name }}
+        run: exit 1
       - run: cargo login
       - run: cargo publish
     env: # Or as an environment variable
