@@ -16,5 +16,5 @@ path = "src/lib.rs"
 [dependencies]
 nom = "8.0.0"
 nom-language = "0.1.0"
-thiserror = "2.0.12"
+thiserror = "2.0.13"
 itertools = "0.14.0"
