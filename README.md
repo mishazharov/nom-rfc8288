@@ -5,10 +5,10 @@
 ## Usage
 
 ```rust
-use nom_rfc8288::complete::{link, LinkData, LinkParam};
+use nom_rfc8288::complete::{link_strict, LinkData, LinkParam};
 
 let link_data = r#"<https://example.com>; rel="origin"; csv="one,two""#;
-let parsed = link(link_data).unwrap();
+let parsed = link_strict(link_data).unwrap();
 
 assert_eq!(
     parsed,
